@@ -50,10 +50,12 @@ enum EHotkeyFKeys
 static unsigned short HotkeyMod;
 static unsigned char ThrottleMode, LastAudioThrottleMode;
 static bool ThrottlePaused, SpeedModHold, DisableSystemALT, UseMiddleMouseMenu, PointerLock, DrawStretched;
-static bool DrawCoreShader, DoApplyInterfaceOptions, DoApplyGeometry, DoSave, DoLoad, AudioSkip, DefaultPointerLock;
+static bool DrawCoreShader, DoApplyInterfaceOptions, DoApplyGeometry, DoSave, DoLoad, AudioSkip, DefaultPointerLock, AudioMuted = false;
 static char Scaling;
 static int CRTFilter, AudioLatency;
 static float FastRate = 5.0f, SlowRate = 0.3f;
+static const float AudioVolumeStep = 0.1f;
+static float AudioVolume = 1.0f;
 static std::string PathSaves, PathSystem;
 static ZL_Vector PointerLockPos;
 enum { FAST_FPS_LIMIT = 200 };
@@ -907,6 +909,18 @@ static bool RETRO_CALLCONV retro_environment_cb(unsigned cmd, void *data)
 	return false;
 }
 
+void MIXER_CallBack(void* userdata, unsigned char* stream, int len);
+static void ProcessAudioBuffer(short* buffer, unsigned int samples)
+{
+	MIXER_CallBack(NULL, (unsigned char*)buffer, samples * 4);
+
+	if (AudioMuted)
+		memset(buffer, 0, samples * 4);
+	else
+		for (size_t i = 0; i < samples * 2; ++i)
+			buffer[i] = ZL_Math::Clamp<short>(buffer[i] * AudioVolume, -32768, 32767);
+}
+
 static bool AudioMix(short* buffer, unsigned int samples, bool need_mix)
 {
 	unsigned char tm = (LastAudioThrottleMode == RETRO_THROTTLE_FAST_FORWARD ? RETRO_THROTTLE_FAST_FORWARD : ThrottleMode);
@@ -946,7 +960,6 @@ static bool AudioMix(short* buffer, unsigned int samples, bool need_mix)
 		ZL_LOG("AUDIOMIX", "Catch-up - Have %d but want %d (catchups: %u)", (int)have, (int)want, catchups);
 	}
 
-	void MIXER_CallBack(void *userdata, unsigned char *stream, int len);
 	if (have < want || want != samples || AudioSkip || tm == RETRO_THROTTLE_FRAME_STEPPING)
 	{
 		enum { UI_MAX_SAMPLES = 4096*4 };
@@ -970,10 +983,10 @@ static bool AudioMix(short* buffer, unsigned int samples, bool need_mix)
 		for (size_t scrap, keep = want / 5; have >= samples && have > use + keep; have -= scrap)
 		{
 			scrap = ZL_Math::Min((size_t)(have - use - keep), (size_t)UI_MAX_SAMPLES);
-			MIXER_CallBack(NULL, (unsigned char*)stretchbuf, (int)(scrap* 4));
+			ProcessAudioBuffer(stretchbuf, (int)scrap);
 			ZL_LOG("AUDIOMIX", "Scrapping %d (of %d available total)", (int)scrap, (int)have);
 		}
-		MIXER_CallBack(NULL, (unsigned char*)stretchbuf, (int)(use* 4));
+		ProcessAudioBuffer(stretchbuf, (int)use);
 
 		if (0)
 		{
@@ -999,7 +1012,7 @@ static bool AudioMix(short* buffer, unsigned int samples, bool need_mix)
 	}
 	else
 	{
-		MIXER_CallBack(NULL, (unsigned char*)buffer,  (int)(want * 4));
+		ProcessAudioBuffer(buffer, (int)want);
 	}
 	return true;
 }
@@ -1195,9 +1208,29 @@ static bool OnKeyUseHotKey(ZL_KeyboardEvent& e)
 		}
 	}
 	if (e.key == ZLK_APPLICATION) pressedApplication = e.is_down;
+
+
+	unsigned short mod = ((e.mod & ZLKMOD_CTRL) ? ZLKMOD_CTRL : 0) | ((e.mod & ZLKMOD_SHIFT) ? ZLKMOD_SHIFT : 0) | ((e.mod & ZLKMOD_ALT) ? ZLKMOD_ALT : 0) | ((e.mod & ZLKMOD_META) ? ZLKMOD_META : 0) | (pressedApplication ? ZLKMOD_MODE : 0);
+
+	if (mod == HotkeyMod)
+	{
+		if (e.key == ZLK_M && e.is_down && !e.is_repeat)
+		{
+			AudioMuted ^= true;
+			vecNotify.push_back({ ZL_TextBuffer(fntOSD, (AudioMuted ? "Audio Muted" : "Audio Unmuted")), 500, RETRO_LOG_INFO, ZLTICKS, 0.0f });
+			return true;
+		}
+		else if (e.key == ZLK_PAGEUP || e.key == ZLK_PAGEDOWN && e.is_down)
+		{
+			/* adjust audio volume by 10% */
+			float delta = e.key == ZLK_PAGEUP ? AudioVolumeStep : -AudioVolumeStep;
+			AudioVolume = ZL_Math::Clamp<float>(AudioVolume + delta, 0.0f, 1.0f);
+			vecNotify.push_back({ ZL_TextBuffer(fntOSD, ZL_String::format("Audio Volume: %d%%", (int)std::round(AudioVolume * 100.0f))), 500, RETRO_LOG_INFO, ZLTICKS, 0.0f });
+		}
+	}
+
 	const int f = (e.key - ZLK_F1);
 	if (f < 0 || f > 11) return false;
-	unsigned short mod = ((e.mod & ZLKMOD_CTRL) ? ZLKMOD_CTRL : 0) | ((e.mod & ZLKMOD_SHIFT) ? ZLKMOD_SHIFT : 0) | ((e.mod & ZLKMOD_ALT) ? ZLKMOD_ALT : 0) | ((e.mod & ZLKMOD_META) ? ZLKMOD_META : 0) | (pressedApplication ? ZLKMOD_MODE : 0);
 	if ((e.is_down && ((mod & HotkeyMod) != HotkeyMod || (mod & ((ZLKMOD_CTRL|ZLKMOD_SHIFT|ZLKMOD_ALT|ZLKMOD_META|ZLKMOD_MODE)&~HotkeyMod)))) || pressedFs[f] == e.is_down) return false;
 	pressedFs[f] = e.is_down;
 	switch (f)
