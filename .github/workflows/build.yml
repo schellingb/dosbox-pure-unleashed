@@ -1,0 +1,231 @@
+name: Build
+on:
+  workflow_dispatch:
+    inputs:
+      versionstring:
+        description: 'Version String'
+        default: ''
+        required: false
+        type: string
+
+jobs:
+  build-win64-msvc:
+    runs-on: windows-latest
+    steps:
+    - uses: microsoft/setup-msbuild@main
+    - name: Checkout
+      run: |
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure-unleashed.git" main
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure.git" dosbox-pure
+        git clone --single-branch --branch main --no-tags --depth 1 https://github.com/${{ github.repository_owner }}/ZillaLib.git ZillaLib
+    - if: ${{ github.event.inputs.versionstring == '' }}
+      run: perl -i -pe "s/\"(.*)\"/\"\1-`git -C main rev-parse --short HEAD`\"/g" dosbox-pure/dosbox_pure_ver.h
+      shell: bash
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      run: perl -i -pe "s/\".*\"/\"${{ github.event.inputs.versionstring }}\"/g" dosbox-pure/dosbox_pure_ver.h
+      shell: bash
+    - run: echo "::add-matcher::main/.github/workflows/msvc-problem-matcher.json"
+    - name: Build
+      run: |
+        cd main
+        MSBuild.exe DOSBoxPure-vs.vcxproj /p:Configuration=ReleaseGLCORE /p:Platform=x64
+    - uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_win64
+        path: main/Release-vs2026x64/DOSBoxPure.exe
+
+  build-win32-msvc:
+    runs-on: windows-latest
+    steps:
+    - uses: microsoft/setup-msbuild@main
+    - name: Checkout
+      run: |
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure-unleashed.git" main
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure.git" dosbox-pure
+        git clone --single-branch --branch main --no-tags --depth 1 https://github.com/${{ github.repository_owner }}/ZillaLib.git ZillaLib
+    - if: ${{ github.event.inputs.versionstring == '' }}
+      run: perl -i -pe "s/\"(.*)\"/\"\1-`git -C main rev-parse --short HEAD`\"/g" dosbox-pure/dosbox_pure_ver.h
+      shell: bash
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      run: perl -i -pe "s/\".*\"/\"${{ github.event.inputs.versionstring }}\"/g" dosbox-pure/dosbox_pure_ver.h
+      shell: bash
+    - run: echo "::add-matcher::main/.github/workflows/msvc-problem-matcher.json"
+    - name: Build
+      run: |
+        cd main
+        MSBuild.exe DOSBoxPure-vs.vcxproj /p:Configuration=ReleaseGLCORE /p:Platform=Win32
+    - uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_win32
+        path: main/Release-vs2026/DOSBoxPure.exe
+
+  build-winarm64-msvc:
+    runs-on: windows-11-arm
+    steps:
+    - uses: microsoft/setup-msbuild@main
+    - name: Checkout
+      run: |
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure-unleashed.git" main
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure.git" dosbox-pure
+        git clone --single-branch --branch main --no-tags --depth 1 https://github.com/${{ github.repository_owner }}/ZillaLib.git ZillaLib
+    - if: ${{ github.event.inputs.versionstring == '' }}
+      run: perl -i -pe "s/\"(.*)\"/\"\1-`git -C main rev-parse --short HEAD`\"/g" dosbox-pure/dosbox_pure_ver.h
+      shell: bash
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      run: perl -i -pe "s/\".*\"/\"${{ github.event.inputs.versionstring }}\"/g" dosbox-pure/dosbox_pure_ver.h
+      shell: bash
+    - run: echo "::add-matcher::main/.github/workflows/msvc-problem-matcher.json"
+    - run: |
+        perl -i -pe "s/x64/ARM64/g" ZillaLib/ZillaApp-vs.props
+        perl -i -pe "s/x64/ARM64/g" ZillaLib/ZillaLib-vs.vcxproj
+        perl -i -pe "s/x64/ARM64/g" main/DOSBoxPure-vs.vcxproj
+        perl -i -pe "s/risc_ARM64/risc_x64/g" main/DOSBoxPure-vs.vcxproj
+      shell: bash
+    - name: Build
+      run: |
+        cd main
+        MSBuild.exe DOSBoxPure-vs.vcxproj /p:Configuration=ReleaseGLCORE /p:Platform=ARM64
+    - uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_winarm64
+        path: main/Release-vs2026ARM64/DOSBoxPure.exe
+
+  build-linux_x64:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      run: |
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure-unleashed.git" main
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure.git" dosbox-pure
+        git clone --single-branch --branch main --no-tags --depth 1 https://github.com/${{ github.repository_owner }}/ZillaLib.git ZillaLib
+    - if: ${{ github.event.inputs.versionstring == '' }}
+      run: perl -i -pe "s/\"(.*)\"/\"\1-`git -C main rev-parse --short HEAD`\"/g" dosbox-pure/dosbox_pure_ver.h
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      run: perl -i -pe "s/\".*\"/\"${{ github.event.inputs.versionstring }}\"/g" dosbox-pure/dosbox_pure_ver.h
+    - run: echo "::add-matcher::main/.github/workflows/gcc-problem-matcher.json"
+    - name: Build
+      if: ${{ github.event.inputs.versionstring == '' }}
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install libgl1-mesa-dev libasound2-dev libpulse-dev libxxf86vm-dev libxrandr-dev
+        cd main
+        make linux-release -j4 ZL_VIDEO_OPENGL_CORE=1
+        cp Release-linux/DOSBoxPure_x86_64 Release-linux/DOSBoxPure
+        mv Release-linux Release-linux-glcore
+    - name: Build for release
+      if: ${{ github.event.inputs.versionstring != '' }}
+      uses: rhaschke/docker-run-action@main
+      with:
+        image: ubuntu:14.04 # use older distro for increased GLIBC compatibility
+        options: -v ${{ github.workspace }}:/work
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install git make g++ libgl1-mesa-dev libasound2-dev libpulse-dev libxxf86vm-dev libxrandr-dev
+          cd /work/main
+          make linux-release -j4 ZL_VIDEO_OPENGL_CORE=1
+          cp Release-linux/DOSBoxPure_x86_64 Release-linux/DOSBoxPure
+          mv Release-linux Release-linux-glcore
+          rm -rf ../ZillaLib/Linux/build-release/
+          make linux-release -j4 ZL_VIDEO_OPENGL_ES2=1
+          cp Release-linux/DOSBoxPure_x86_64 Release-linux/DOSBoxPure
+          mv Release-linux Release-linux-gles
+    - uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_linux_x64_glcore
+        path: main/Release-linux-glcore/DOSBoxPure
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_linux_x64_gles
+        path: main/Release-linux-gles/DOSBoxPure
+
+  build-linux_arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - name: Checkout
+      run: |
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure-unleashed.git" main
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure.git" dosbox-pure
+        git clone --single-branch --branch main --no-tags --depth 1 https://github.com/${{ github.repository_owner }}/ZillaLib.git ZillaLib
+    - if: ${{ github.event.inputs.versionstring == '' }}
+      run: perl -i -pe "s/\"(.*)\"/\"\1-`git -C main rev-parse --short HEAD`\"/g" dosbox-pure/dosbox_pure_ver.h
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      run: perl -i -pe "s/\".*\"/\"${{ github.event.inputs.versionstring }}\"/g" dosbox-pure/dosbox_pure_ver.h
+    - run: echo "::add-matcher::main/.github/workflows/gcc-problem-matcher.json"
+    - name: Build
+      if: ${{ github.event.inputs.versionstring == '' }}
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install libgl1-mesa-dev libasound2-dev libpulse-dev libxxf86vm-dev libxrandr-dev
+        cd main
+        make linux-release -j4 ZL_VIDEO_OPENGL_ES2=1
+        cp Release-linux/DOSBoxPure_arm_64 Release-linux/DOSBoxPure
+        mv Release-linux Release-linux-gles
+    - name: Build for release
+      if: ${{ github.event.inputs.versionstring != '' }}
+      run: | # arm runner somehow can't use older distro via docker like the x64 runner can, so run on current distro
+        sudo apt-get update
+        sudo apt-get -y install libgl1-mesa-dev libasound2-dev libpulse-dev libxxf86vm-dev libxrandr-dev
+        cd main
+        make linux-release -j4 ZL_VIDEO_OPENGL_CORE=1
+        cp Release-linux/DOSBoxPure_arm_64 Release-linux/DOSBoxPure
+        mv Release-linux Release-linux-glcore
+        rm -rf ../ZillaLib/Linux/build-release/
+        make linux-release -j4 ZL_VIDEO_OPENGL_ES2=1
+        cp Release-linux/DOSBoxPure_arm_64 Release-linux/DOSBoxPure
+        mv Release-linux Release-linux-gles
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_linux_arm64_glcore
+        path: main/Release-linux-glcore/DOSBoxPure
+    - uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_linux_arm64_gles
+        path: main/Release-linux-gles/DOSBoxPure
+
+  build-macos-x64:
+    runs-on: macos-15-intel
+    steps:
+    - name: Checkout
+      run: |
+        sudo xcode-select -s /Applications/Xcode_16.app
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure-unleashed.git" main
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure.git" dosbox-pure
+        git clone --single-branch --branch main --no-tags --depth 1 https://github.com/${{ github.repository_owner }}/ZillaLib.git ZillaLib
+    - if: ${{ github.event.inputs.versionstring == '' }}
+      run: perl -i -pe "s/\"(.*)\"/\"\1-`git -C main rev-parse --short HEAD`\"/g" dosbox-pure/dosbox_pure_ver.h
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      run: perl -i -pe "s/\".*\"/\"${{ github.event.inputs.versionstring }}\"/g" dosbox-pure/dosbox_pure_ver.h
+    - run: echo "::add-matcher::main/.github/workflows/gcc-problem-matcher.json"
+    - name: Build
+      run: |
+        cd main
+        make macos-release -j4
+    - uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_macos_x64
+        path: main/Release-macos/DOSBoxPure.app.zip
+
+  build-macos-arm64:
+    runs-on: macos-14
+    steps:
+    - name: Checkout
+      run: |
+        sudo xcode-select -s /Applications/Xcode_15.0.1.app
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure-unleashed.git" main
+        git clone --single-branch --branch main --no-tags --depth 1 "https://codeberg.org/schelling/dosbox-pure.git" dosbox-pure
+        git clone --single-branch --branch main --no-tags --depth 1 https://github.com/${{ github.repository_owner }}/ZillaLib.git ZillaLib
+    - if: ${{ github.event.inputs.versionstring == '' }}
+      run: perl -i -pe "s/\"(.*)\"/\"\1-`git -C main rev-parse --short HEAD`\"/g" dosbox-pure/dosbox_pure_ver.h
+    - if: ${{ github.event.inputs.versionstring != '' }}
+      run: perl -i -pe "s/\".*\"/\"${{ github.event.inputs.versionstring }}\"/g" dosbox-pure/dosbox_pure_ver.h
+    - run: echo "::add-matcher::main/.github/workflows/gcc-problem-matcher.json"
+    - name: Build
+      run: |
+        cd main
+        make macos-release -j4
+    - uses: actions/upload-artifact@main
+      with:
+        name: dosbox-pure-unleashed_macos_arm64
+        path: main/Release-macos/DOSBoxPure.app.zip
